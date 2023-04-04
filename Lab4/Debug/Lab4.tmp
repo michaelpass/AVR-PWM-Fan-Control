@@ -1,0 +1,52 @@
+<ASSEMBLER_INFO>
+ <VERSION>2.2.8</VERSION>
+ <DEVICE>"ATmega328P"</DEVICE>
+ <WORKING_DIR>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\Debug</WORKING_DIR>
+ <INCLUDE_PATH>
+  <DIR>C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc</DIR>
+  <DIR>C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avrassembler\Include</DIR>
+  <DIR></DIR>
+ </INCLUDE_PATH>
+ <SOURCE_FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</SOURCE_FILE>
+ <INCLUDED_FILES>
+  <FILE>C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc\m328Pdef.inc</FILE>
+ </INCLUDED_FILES>
+ <OBJECT_FILES>
+  <FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\Debug\Lab4.obj</FILE>
+ </OBJECT_FILES>
+ <HEX_FILES>
+  <FILE>Lab4.hex</FILE>
+ </HEX_FILES>
+ <OUTPUT_FILES>
+  <FILE>Lab4.map</FILE>
+  <FILE>Lab4.lss</FILE>
+ </OUTPUT_FILES>
+ <LABELS>
+  <LCD_init><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>164</LINE></LCD_init>
+  <delay_5s><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>242</LINE></delay_5s>
+  <send_data><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>138</LINE></send_data>
+  <start><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>62</LINE></start>
+  <read_rpg><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>76</LINE></read_rpg>
+  <do_clockwise><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>91</LINE></do_clockwise>
+  <do_counterclockwise><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>100</LINE></do_counterclockwise>
+  <end_read_rpg><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>109</LINE></end_read_rpg>
+  <increment_counter><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>114</LINE></increment_counter>
+  <end_do_clockwise><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>97</LINE></end_do_clockwise>
+  <decrement_counter><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>117</LINE></decrement_counter>
+  <end_do_counterclockwise><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>106</LINE></end_do_counterclockwise>
+  <send_instruction><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>120</LINE></send_instruction>
+  <LCD_strobe><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>157</LINE></LCD_strobe>
+  <delay_200us><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>282</LINE></delay_200us>
+  <delay_40us><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>292</LINE></delay_40us>
+  <delay_100ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>252</LINE></delay_100ms>
+  <delay_5ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>262</LINE></delay_5ms>
+  <loop_5s><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>245</LINE></loop_5s>
+  <loop_100ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>255</LINE></loop_100ms>
+  <delay_2ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>272</LINE></delay_2ms>
+  <loop_5ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>265</LINE></loop_5ms>
+  <loop_2ms><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>275</LINE></loop_2ms>
+  <loop_200us><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>285</LINE></loop_200us>
+  <loop_40us><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>295</LINE></loop_40us>
+  <delay_375ns><FILE>C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm</FILE><LINE>303</LINE></delay_375ns>
+ </LABELS>
+</ASSEMBLER_INFO>

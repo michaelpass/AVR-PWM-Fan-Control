@@ -1,8 +1,9 @@
 
-AVRASM ver. 2.2.8  C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm Tue Apr 04 04:12:20 2023
+AVRASM ver. 2.2.8  C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm Wed Apr 05 00:39:41 2023
 
 [builtin](2): Including file 'C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc\m328Pdef.inc'
 C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm(8): Including file 'C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc\m328Pdef.inc'
+C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm(509): warning: Register r16 already defined by the .DEF directive
 [builtin](2): Including file 'C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc\m328Pdef.inc'
 C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm(8): Including file 'C:/Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.7.374\avrasm\inc\m328Pdef.inc'
                                  
@@ -1053,14 +1054,19 @@ C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm(8): Including
                                  .equ LCD_EN_PORT = PORTB
                                  .equ LCD_EN_DDR = DDRB
                                  .equ LCD_EN = 3 ; Enable is PB3 (Pin 11)
+                                 .equ PWM_DDR = DDRD
+                                 .equ PWM_pin = 5; PWM is PD5 (Pin 5)
+                                 
                                  
                                  .equ RPG0=2			; RPG0 is PD2 (Pin 2)
                                  .equ RPG1=3			; RPG1 is PD3 (Pin 3)
                                  .equ BUTTON=4		; BUTTON is PD4 (Pin 4)
                                  
+                                 .def fan = r23
+                                 
                                  ; --- Data-direction register setup ---
                                  ; Inputs
-000000 9824                      cbi DDRB, BUTTON	; Set BUTTON0 (PB3/Pin 11) as input
+000000 9854                      cbi DDRD, BUTTON	; Set BUTTON0 (PB3/Pin 11) as input
 000001 9852                      cbi DDRD, RPG0		; Set RPG0 (PD2/Pin 2) as input
 000002 9853                      cbi DDRD, RPG1		; Set RPG1 (PD3/Pin 3) as input
                                  ; LCD Pins
@@ -1070,270 +1076,496 @@ C:\Users\michaelpass\Documents\Atmel Studio\7.0\Lab4\Lab4\main.asm(8): Including
 000006 9a3b                      sbi LCD_DATA_DDR, LCD_DATA_D7 ; Set LCD_DATA_D7 as output
 000007 9a25                      sbi LCD_RS_DDR, LCD_RS ; Set LCD_RS as output
 000008 9a23                      sbi LCD_EN_DDR, LCD_EN ; Set LCD_EN as output 
+000009 9a55                      sbi PWM_DDR, PWM_pin ; Set PWM_pin as output
                                  
-000009 982b                      cbi LCD_EN_PORT, LCD_EN ; Ensure default state of EN is low
+00000a 982b                      cbi LCD_EN_PORT, LCD_EN ; Ensure default state of EN is low
+00000b e071                      ldi fan, 1 ; Fan is on by default
+00000c e693                      ldi r25, 99; Default backup value of PWM signal 49%
                                  
-00000a d041                      rcall LCD_init
+                                 ; --- Setup ---
+00000d d0b3                      rcall LCD_init
+00000e d0e0                      rcall PWM_init
                                  
                                  /*
-                                 ldi r16, 0x02
+                                 ldi r16, 0xC0 ; Send to 2nd line
                                  rcall send_instruction
-                                 */
                                  
-                                 /*
                                  ldi r16, 'E'
                                  rcall send_data
                                  */
                                  
-00000b d06e                      	rcall delay_5s
+00000f d023                      rcall display_status
                                  
-00000c e406                      	ldi r16, 'F'
-00000d d02d                      	rcall send_data
-                                 
+                                 ; --- Loop ---
                                  start:
                                  
+                                 	; 1. Check for button press
+000010 9b4c                          sbis PIND, BUTTON
+000011 d002                      	rcall wait_for_release_button
+                                 	
+                                 	; 2. Read RPG
+000012 d04d                      	rcall read_rpg
+                                 
+000013 cffc                          rjmp start
                                  
                                  
-00000e d06b                      	rcall delay_5s
+                                 wait_for_release_button:
+                                 ; Note: Button is Active-Low. So I/O bit will be set when released.
+000014 3071                      	cpi fan, 1
+000015 f031                      	breq turn_fan_off
+                                 	; Fan is Off. Turn on.
+                                 turn_fan_on:
+000016 e203                      	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1) ; Turn to normal output.
+000017 bd04                      	out TCCR0A, r16
+000018 bd98                      	out OCR0B, r25
+000019 e071                      	ldi fan, 1
+00001a d018                      	rcall display_status ; Now that Fan has been toggled, update display
+00001b c007                      	rjmp button_held
+                                 turn_fan_off:
+00001c ef0f                      	ldi r16, 0xFF
+00001d b598                      	in r25, OCR0B ; Backup current duty cycle value
+00001e bd08                      	out OCR0B, r16
+00001f e303                      	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1)|(1<<COM0B0) ; Turn to inverted output. Allows constant low value to be output.
+000020 bd04                      	out TCCR0A, r16
+000021 e070                      	ldi fan, 0
+000022 d010                      	rcall display_status ; Now that Fan has been toggled, update display
+                                 button_held:
+000023 9b4c                      	sbis PIND, BUTTON
+000024 cffe                      	rjmp button_held
+000025 9508                      	ret
                                  
-00000f e405                      	ldi r16, 'E'
-000010 d02a                      	rcall send_data
+                                 ; --- LCD messages ---
                                  
-000011 cffc                          rjmp start
+000026 4344
+000027 3d20
+000028 0020                      	msg1: .db "DC = ", 0x00
+000029 2820
+00002a 2925
+00002b 0020                      	msg2: .db " (%) ", 0x00
+00002c 6146
+00002d 3a6e
+00002e 0020                      	msg3: .db "Fan: ", 0x00
+00002f 4e4f
+000030 0020                      	msg4: .db "ON ", 0x00
+000031 464f
+000032 0046                      	msg5: .db "OFF", 0x00
+                                 
+                                 display_status:
+000033 930f                      	push r16
+                                 
+                                 	; Send cursor to first line
+000034 e800                      	ldi r16, 0x80
+000035 d06e                      	rcall send_instruction
+                                 
+                                 	; Display "DC = "
+000036 e4ec                      	ldi r30, LOW(2*msg1)
+000037 e0f0                      	ldi r31, HIGH(2*msg1)
+000038 d017                      	rcall displayCString
+                                 
+                                 	; Display Duty Cycle
+000039 d051                      	rcall update_DC_text
+00003a e0e0                      	ldi r30, LOW(dtxt)
+00003b e0f1                      	ldi r31, HIGH(dtxt)
+00003c d01b                      	rcall displayDString
+                                 
+                                 	; Display " (%) "
+00003d e5e2                      	ldi r30, LOW(2*msg2)
+00003e e0f0                      	ldi r31, HIGH(2*msg2)
+00003f d010                      	rcall displayCString
+                                 
+                                 	; Send cursor to second line
+000040 ec00                      	ldi r16, 0xC0
+000041 d062                      	rcall send_instruction
+                                 
+                                 	; Display "Fan: "
+000042 e5e8                      	ldi r30, LOW(2*msg3)
+000043 e0f0                      	ldi r31, HIGH(2*msg3)
+000044 d00b                      	rcall displayCString
+                                 
+000045 3070                      	cpi fan, 0 ; See if fan is turned off
+000046 f021                      	breq display_OFF
+                                 	;Fan is ON
+                                 	; Display "ON "
+000047 e5ee                      	ldi r30, LOW(2*msg4)
+000048 e0f0                      	ldi r31, HIGH(2*msg4)
+000049 d006                      	rcall displayCString
+00004a c003                      	rjmp end_display_status
+                                 
+                                 display_OFF:
+                                 	; Display "OFF"
+00004b e6e2                      	ldi r30, LOW(2*msg5)
+00004c e0f0                      	ldi r31, HIGH(2*msg5)
+00004d d002                      	rcall displayCString
+                                 end_display_status:
+00004e 910f                      	pop r16
+00004f 9508                      	ret
                                  
                                  
                                  
+                                 displayCString:
+000050 930f                      	push r16
+                                 loop_displayCString:
+000051 9105                      	lpm r16, Z+ ; Load contents of Z-pointer into r16, post-increment after
+000052 2300                      	tst r16
+000053 f011                      	breq end_displayCString
+000054 d05b                      	rcall send_data
+000055 cffb                      	rjmp loop_displayCString
+                                 end_displayCString:
+000056 910f                      	pop r16
+000057 9508                      	ret
+                                 
+                                 displayDString:
+000058 930f                      	push r16
+                                 loop_displayDString:
+000059 9101                      	ld r16, Z+
+00005a 2300                      	tst r16
+00005b f011                      	breq end_displayDString
+00005c d053                      	rcall send_data
+00005d cffb                      	rjmp loop_displayDString
+                                 end_displayDString:
+00005e 910f                      	pop r16
+00005f 9508                      	ret
                                  
                                  read_rpg:
-000012 b159                      	in R21, PIND	; Read all pins on Port D simultaneously
-000013 9556                      	lsr R21			; Shift contents to the right
-000014 9556                      	lsr R21	
-000015 7053                      	andi R21, 0x03	; Ignore all but two least-significant bits
-000016 2f65                      	mov R22, R21
-000017 0f66                      	lsl R22			; Make room for previous reading into R22
-000018 0f66                      	lsl R22
-000019 2b64                      	or R22, R20		; Load previous reading (R20) into current comparison (R22)
-00001a 306d                      	cpi R22, 0x0D	;  (Reading now in detent after clockwise rotation)
-00001b f019                      	breq do_clockwise
-00001c 306e                      	cpi R22, 0x0E	; (Reading now in detent after counter-clockwise rotation)
-00001d f039                      	breq do_counterclockwise
-00001e c00c                      	rjmp end_read_rpg
+000060 b159                      	in R21, PIND	; Read all pins on Port D simultaneously
+000061 9556                      	lsr R21			; Shift contents to the right
+000062 9556                      	lsr R21	
+000063 7053                      	andi R21, 0x03	; Ignore all but two least-significant bits
+000064 2f65                      	mov R22, R21
+000065 0f66                      	lsl R22			; Make room for previous reading into R22
+000066 0f66                      	lsl R22
+000067 2b64                      	or R22, R20		; Load previous reading (R20) into current comparison (R22)
+000068 306d                      	cpi R22, 0x0D	;  (Reading now in detent after clockwise rotation)
+000069 f019                      	breq do_clockwise
+00006a 306e                      	cpi R22, 0x0E	; (Reading now in detent after counter-clockwise rotation)
+00006b f031                      	breq do_counterclockwise
+00006c c00a                      	rjmp end_read_rpg
                                  
                                  do_clockwise:
-00001f d00d                      	rcall increment_counter
-000020 3070                      	cpi R23, 0			; Motion from RPG should change the dash display to a digit. If R23 is 0, the dash is being displayed. Motion should cancel this.
-000021 f411                      	brne end_do_clockwise
-000022 9573                      	inc R23				; Turn R23 to 1 so as to begin displaying and accepting first digit
-000023 2700                      	clr R16				; Because increment_counter is called above, R16 must be cleared to begin display on 0.
+00006d 3070                      	cpi fan, 0			; Don't increment if fan is off
+00006e f011                      	breq end_do_clockwise
+00006f d009                      	rcall increment_PWM
+000070 dfc2                      	rcall display_status
                                  end_do_clockwise: 
-000024 c006                      	rjmp end_read_rpg
+000071 c005                      	rjmp end_read_rpg
                                  
                                  do_counterclockwise:
-000025 d008                      	rcall decrement_counter
-000026 3070                      	cpi R23, 0			; Motion from RPG should get rid of displaying dash and begin displaying numbers.
-000027 f411                      	brne end_do_counterclockwise
-000028 9573                      	inc R23				; Incrementing R23 moves display from a dash to actual numbers
-000029 2700                      	clr R16				; Although decrement won't decrement to zero, because display is beginning to display numbers, best to ensure that it starts out on zero.
+000072 3070                      	cpi fan, 0			; Don't decrement if fan is off
+000073 f011                      	breq end_do_counterclockwise
+000074 d00d                      	rcall decrement_PWM
+000075 dfbd                      	rcall display_status
                                  end_do_counterclockwise:
-00002a c000                      	rjmp end_read_rpg
+000076 c000                      	rjmp end_read_rpg
                                  
                                  end_read_rpg:
-00002b 2f45                      	mov R20, R21	; Save current reading as previous reading
-00002c 9508                      	ret
+000077 2f45                      	mov R20, R21	; Save current reading as previous reading
+000078 9508                      	ret
                                  
                                  
-                                 increment_counter:
-00002d 9508                      	ret
+                                 increment_PWM:
+000079 930f                      	push r16
+00007a b508                      	in r16, OCR0B
+00007b 3c07                      	cpi r16, 199
+00007c f019                      	breq end_increment_PWM ; Don't increment past 199 = 100% (Will display as 99%)
+00007d 9503                      	inc r16
+00007e 9503                      	inc r16
+00007f bd08                      	out OCR0B, r16 ; Store value back in OCR0B
+                                 end_increment_PWM:
+000080 910f                      	pop r16
+000081 9508                      	ret
                                  
-                                 decrement_counter:
-00002e 9508                      	ret
+                                 decrement_PWM:
+000082 930f                      	push r16
+000083 b508                      	in r16, OCR0B
+000084 3001                      	cpi r16, 1
+000085 f019                      	breq end_decrement_PWM
+000086 950a                      	dec r16
+000087 950a                      	dec r16
+000088 bd08                      	out OCR0B, r16
+                                 end_decrement_PWM:
+000089 910f                      	pop r16
+00008a 9508                      	ret
+                                 
+                                 
+                                 update_DC_text:
+                                 .dseg 
+000100                           	dtxt: .BYTE 5 ; Allocation
+                                 
+                                 .cseg
+00008b b588                      	in r24, OCR0B	; Get OCR0B value. This corresponds with the current duty cycle.
+00008c 3f8f                      	cpi r24, 0xFF
+00008d f409                      	brne use_regular
+00008e 2f89                      	mov r24, r25
+                                 use_regular:
+00008f 9586                      	lsr r24	; Divide by 2. OCR0B values range from 1 to 199. This now means they range from 0 to 99. PWM percentage can be directly taken from this number.
+000090 2f08                      	mov dd8u, r24
+000091 e01a                      	ldi dv8u, 10 ; Divide by 10 to get digits
+                                 ; Store null-terminated string
+000092 e080                      	ldi r24, 0x00
+000093 9380 0104                 	sts dtxt+4, r24
+                                 ; Store 0
+000095 e380                      	ldi r24, 0x30 ; 0 in ASCII
+000096 9380 0103                 	sts dtxt+3, r24
+                                 ; Store decimal point
+000098 e28e                      	ldi r24, 0x2E
+000099 9380 0102                 	sts dtxt+2, r24
+                                 ; Divide percentage by 10 and format remainder
+00009b d089                      	rcall div8u ; Remainder is stored in drem8u (r15), Result is stored in dres8u (r16)
+00009c e380                      	ldi r24, 0x30 ; ASCII offset
+00009d 0ef8                      	add drem8u, r24 ; Covert to ASCII
+00009e 92f0 0101                 	sts dtxt+1, drem8u
+                                 ; Store remaining digit.
+0000a0 0f08                      	add dres8u, r24 ; Covert to ASCII
+0000a1 9300 0100                 	sts dtxt, dres8u
+0000a3 9508                      	ret
                                  
                                  send_instruction:
-00002f 930f                      	push r16
-000030 982d                      	cbi LCD_RS_PORT, LCD_RS ; Set RS low for an instruction
-000031 9502                      	swap r16
-000032 b908                      	out LCD_DATA_PORT, r16 ; Output high-nibble
-000033 d013                      	rcall LCD_strobe
+0000a4 930f                      	push r16
+0000a5 982d                      	cbi LCD_RS_PORT, LCD_RS ; Set RS low for an instruction
+0000a6 9502                      	swap r16
+0000a7 b908                      	out LCD_DATA_PORT, r16 ; Output high-nibble
+0000a8 d013                      	rcall LCD_strobe
                                  
-000034 d061                      	rcall delay_200us
+0000a9 d06c                      	rcall delay_200us
                                  
-000035 9502                      	swap r16; Move low-nibble to end
-000036 b908                      	out LCD_DATA_PORT, r16
-000037 d00f                      	rcall LCD_strobe
+0000aa 9502                      	swap r16; Move low-nibble to end
+0000ab b908                      	out LCD_DATA_PORT, r16
+0000ac d00f                      	rcall LCD_strobe
                                  
-000038 d064                      	rcall delay_40us
+0000ad d06f                      	rcall delay_40us
                                  
-000039 910f                      	pop r16
-00003a 9508                      	ret
+0000ae 910f                      	pop r16
+0000af 9508                      	ret
                                  
                                  send_data:
-00003b 930f                      	push r16
-00003c 9a2d                      	sbi LCD_RS_PORT, LCD_RS ; Set RS high for data
-00003d 9502                      	swap r16
-00003e b908                      	out LCD_DATA_PORT, r16 ; Output high-nibble
-00003f d007                      	rcall LCD_strobe
+0000b0 930f                      	push r16
+0000b1 9a2d                      	sbi LCD_RS_PORT, LCD_RS ; Set RS high for data
+0000b2 9502                      	swap r16
+0000b3 b908                      	out LCD_DATA_PORT, r16 ; Output high-nibble
+0000b4 d007                      	rcall LCD_strobe
                                  
-000040 d055                      	rcall delay_200us
+0000b5 d060                      	rcall delay_200us
                                  
-000041 9502                      	swap r16; Move low-nibble to end
-000042 b908                      	out LCD_DATA_PORT, r16
-000043 d003                      	rcall LCD_strobe
+0000b6 9502                      	swap r16; Move low-nibble to end
+0000b7 b908                      	out LCD_DATA_PORT, r16
+0000b8 d003                      	rcall LCD_strobe
                                  
-000044 d058                      	rcall delay_40us
+0000b9 d063                      	rcall delay_40us
                                  
-000045 910f                      	pop r16
-000046 9508                      	ret
+0000ba 910f                      	pop r16
+0000bb 9508                      	ret
                                  
                                  
                                  LCD_strobe:
-000047 982b                      	cbi LCD_EN_PORT, LCD_EN
-000048 9a2b                      	sbi LCD_EN_PORT, LCD_EN
-000049 d04c                      	rcall delay_200us
-00004a 982b                      	cbi LCD_EN_PORT, LCD_EN
-00004b 9508                      	ret
+0000bc 982b                      	cbi LCD_EN_PORT, LCD_EN
+0000bd 9a2b                      	sbi LCD_EN_PORT, LCD_EN
+0000be d057                      	rcall delay_200us
+0000bf 982b                      	cbi LCD_EN_PORT, LCD_EN
+0000c0 9508                      	ret
                                  
                                  LCD_init:
-00004c 930f                      	push r16
+0000c1 930f                      	push r16
                                  
-00004d d033                      	rcall delay_100ms ; Wait for LCD to power up.
-00004e d032                      	rcall delay_100ms
-00004f d031                      	rcall delay_100ms
-000050 d030                      	rcall delay_100ms
-000051 d02f                      	rcall delay_100ms
+0000c2 d03e                      	rcall delay_100ms ; Wait for LCD to power up.
+0000c3 d03d                      	rcall delay_100ms
+0000c4 d03c                      	rcall delay_100ms
+0000c5 d03b                      	rcall delay_100ms
+0000c6 d03a                      	rcall delay_100ms
                                  
                                  	; 8-bit mode. Write only upper-nibble. First write.
-000052 e003                      	ldi r16, 0x03
+0000c7 e003                      	ldi r16, 0x03
                                  	;rcall send_instruction
-000053 b908                      	out LCD_DATA_PORT, r16
-000054 982d                      	cbi LCD_RS_PORT, LCD_RS ; RS=0 (Command)
-000055 dff1                      	rcall LCD_strobe
-000056 d031                      	rcall delay_5ms
+0000c8 b908                      	out LCD_DATA_PORT, r16
+0000c9 982d                      	cbi LCD_RS_PORT, LCD_RS ; RS=0 (Command)
+0000ca dff1                      	rcall LCD_strobe
+0000cb d03c                      	rcall delay_5ms
                                  
                                  	; 8-bit mode. Write only upper-nibble. Second write.
-000057 e003                      	ldi r16, 0x03
+0000cc e003                      	ldi r16, 0x03
                                  	;rcall send_instruction
-000058 b908                      	out LCD_DATA_PORT, r16
-000059 982d                      	cbi LCD_RS_PORT, LCD_RS
-00005a dfec                      	rcall LCD_strobe
-00005b d03a                      	rcall delay_200us
+0000cd b908                      	out LCD_DATA_PORT, r16
+0000ce 982d                      	cbi LCD_RS_PORT, LCD_RS
+0000cf dfec                      	rcall LCD_strobe
+0000d0 d045                      	rcall delay_200us
                                  
                                  	; 8-bit mode. Write only upper-nibble. Third write.
-00005c e003                      	ldi r16, 0x03
+0000d1 e003                      	ldi r16, 0x03
                                  	;rcall send_instruction
-00005d b908                      	out LCD_DATA_PORT, r16
-00005e 982d                      	cbi LCD_RS_PORT, LCD_RS
-00005f dfe7                      	rcall LCD_strobe
-000060 d035                      	rcall delay_200us
+0000d2 b908                      	out LCD_DATA_PORT, r16
+0000d3 982d                      	cbi LCD_RS_PORT, LCD_RS
+0000d4 dfe7                      	rcall LCD_strobe
+0000d5 d040                      	rcall delay_200us
                                  
                                  	; Enter 4-bit mode. Write only upper-nibble.
-000061 e002                      	ldi r16, 0x02
+0000d6 e002                      	ldi r16, 0x02
                                  	;rcall send_instruction
-000062 b908                      	out LCD_DATA_PORT, r16
-000063 982d                      	cbi LCD_RS_PORT, LCD_RS
-000064 dfe2                      	rcall LCD_strobe
-000065 d022                      	rcall delay_5ms
+0000d7 b908                      	out LCD_DATA_PORT, r16
+0000d8 982d                      	cbi LCD_RS_PORT, LCD_RS
+0000d9 dfe2                      	rcall LCD_strobe
+0000da d02d                      	rcall delay_5ms
                                  
                                  	; Write Command "Set Interface"
-000066 e208                      	ldi r16, 0x28
-000067 dfc7                      	rcall send_instruction
-000068 d02d                      	rcall delay_200us
+0000db e208                      	ldi r16, 0x28
+0000dc dfc7                      	rcall send_instruction
+0000dd d038                      	rcall delay_200us
                                  
                                  	; Write Command "Enable Display/Cursor"
-000069 e009                      	ldi r16, 0x09
-00006a dfc4                      	rcall send_instruction
-00006b d02a                      	rcall delay_200us
+0000de e009                      	ldi r16, 0x09
+0000df dfc4                      	rcall send_instruction
+0000e0 d035                      	rcall delay_200us
                                  
                                  
                                  	; Write Command "Clear and Home"
-00006c e001                      	ldi r16, 0x01
-00006d dfc1                      	rcall send_instruction
-00006e d027                      	rcall delay_200us
+0000e1 e001                      	ldi r16, 0x01
+0000e2 dfc1                      	rcall send_instruction
+0000e3 d032                      	rcall delay_200us
                                  
                                  
                                  	; Write Command "Set Cursor Move Direction"
-00006f e006                      	ldi r16, 0x06
-000070 dfbe                      	rcall send_instruction
-000071 d024                      	rcall delay_200us
+0000e4 e006                      	ldi r16, 0x06
+0000e5 dfbe                      	rcall send_instruction
+0000e6 d02f                      	rcall delay_200us
                                  
                                  
                                  	; Turn on display
-000072 e00c                      	ldi r16, 0x0C
-000073 dfbb                      	rcall send_instruction
-000074 d021                      	rcall delay_200us
+0000e7 e00c                      	ldi r16, 0x0C
+0000e8 dfbb                      	rcall send_instruction
+0000e9 d02c                      	rcall delay_200us
                                  
                                  
-000075 e002                      	ldi r16, 0x02
-000076 dfb8                      	rcall send_instruction
-000077 d01e                      	rcall delay_200us
+0000ea e002                      	ldi r16, 0x02
+0000eb dfb8                      	rcall send_instruction
+0000ec d029                      	rcall delay_200us
                                  
-000078 910f                      	pop r16
-000079 9508                      	ret
+0000ed 910f                      	pop r16
+0000ee 9508                      	ret
+                                 
+                                 
+                                 PWM_init:
+0000ef 930f                      	push r16
+                                 
+0000f0 e009                      	ldi r16, 0b00001001 ; Set prescaler to 1
+0000f1 bd05                      	out TCCR0B, r16
+                                 
+0000f2 ec07                      	ldi r16, 199 ; Set top value for PWM. This gives a frequency of 80kHz.
+0000f3 bd07                      	out OCR0A, r16
+                                 
+0000f4 e603                      	ldi r16, 99 ; Set duty cycle to 50%
+0000f5 bd08                      	out OCR0B, r16
+                                 
+0000f6 e203                      	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1) ; set the waveform generation mode to Fast PWM, 8-bit, with OC0B set on compare match
+0000f7 bd04                      	out TCCR0A, r16
+                                 
+0000f8 910f                      	pop r16
+0000f9 9508                      	ret
+                                 
                                  
                                  
                                  delay_5s:
-00007a 930f                      	push r16
-00007b e302                      	ldi r16, 50
+0000fa 930f                      	push r16
+0000fb e302                      	ldi r16, 50
                                  loop_5s:
-00007c d004                      	rcall delay_100ms
-00007d 950a                      	dec r16
-00007e f7e9                      	brne loop_5s
-00007f 910f                      	pop r16
-000080 9508                      	ret
+0000fc d004                      	rcall delay_100ms
+0000fd 950a                      	dec r16
+0000fe f7e9                      	brne loop_5s
+0000ff 910f                      	pop r16
+000100 9508                      	ret
                                  
                                  delay_100ms:
-000081 930f                      	push r16
-000082 e302                      	ldi r16, 50
+000101 930f                      	push r16
+000102 e302                      	ldi r16, 50
                                  loop_100ms:
-000083 d00b                      	rcall delay_2ms
-000084 950a                      	dec r16
-000085 f7e9                      	brne loop_100ms
-000086 910f                      	pop r16
-000087 9508                      	ret
+000103 d00b                      	rcall delay_2ms
+000104 950a                      	dec r16
+000105 f7e9                      	brne loop_100ms
+000106 910f                      	pop r16
+000107 9508                      	ret
                                  
                                  delay_5ms:
-000088 930f                      	push r16
-000089 e109                      	ldi r16, 25
+000108 930f                      	push r16
+000109 e109                      	ldi r16, 25
                                  loop_5ms:
-00008a d00b                      	rcall delay_200us
-00008b 950a                      	dec r16
-00008c f7e9                      	brne loop_5ms
-00008d 910f                      	pop r16
-00008e 9508                      	ret
+00010a d00b                      	rcall delay_200us
+00010b 950a                      	dec r16
+00010c f7e9                      	brne loop_5ms
+00010d 910f                      	pop r16
+00010e 9508                      	ret
                                  
                                  delay_2ms: ; 2.250 ms
-00008f 930f                      	push r16
-000090 e00a                      	ldi r16, 10 ; Run loop 10 times to get to 2000us = 2ms
+00010f 930f                      	push r16
+000110 e00a                      	ldi r16, 10 ; Run loop 10 times to get to 2000us = 2ms
                                  loop_2ms:
-000091 d004                      	rcall delay_200us
-000092 950a                      	dec r16
-000093 f7e9                      	brne loop_2ms
-000094 910f                      	pop r16
-000095 9508                      	ret
+000111 d004                      	rcall delay_200us
+000112 950a                      	dec r16
+000113 f7e9                      	brne loop_2ms
+000114 910f                      	pop r16
+000115 9508                      	ret
                                  
                                  delay_200us: ; 200.625 us
-000096 930f                      	push r16
-000097 e005                      	ldi r16, 5
+000116 930f                      	push r16
+000117 e005                      	ldi r16, 5
                                  loop_200us:
-000098 d004                      	rcall delay_40us
-000099 950a                      	dec r16
-00009a f7e9                      	brne loop_200us
-00009b 910f                      	pop r16
-00009c 9508                      	ret
+000118 d004                      	rcall delay_40us
+000119 950a                      	dec r16
+00011a f7e9                      	brne loop_200us
+00011b 910f                      	pop r16
+00011c 9508                      	ret
                                  
                                  delay_40us: ; 40.125 us
-00009d 930f                      	push r16
-00009e e60b                      	ldi r16, 107
+00011d 930f                      	push r16
+00011e e60b                      	ldi r16, 107
                                  loop_40us:
-00009f d004                      	rcall delay_375ns
-0000a0 950a                      	dec r16
-0000a1 f7e9                      	brne loop_40us
-0000a2 910f                      	pop r16
-0000a3 9508                      	ret
+00011f d004                      	rcall delay_375ns
+000120 950a                      	dec r16
+000121 f7e9                      	brne loop_40us
+000122 910f                      	pop r16
+000123 9508                      	ret
                                  	
                                  
                                  delay_375ns:
-0000a4 9508                      	ret ; rcall - 2 cycles, ret - 4 cycles = 375ns @ 16MHz
+000124 9508                      	ret ; rcall - 2 cycles, ret - 4 cycles = 375ns @ 16MHz
                                  
+                                 
+                                 
+                                 ;***************************************************************************
+                                 ;*
+                                 ;* "div8u" - 8/8 Bit Unsigned Division
+                                 ;*
+                                 ;* This subroutine divides the two register variables "dd8u" (dividend) and 
+                                 ;* "dv8u" (divisor). The result is placed in "dres8u" and the remainder in
+                                 ;* "drem8u".
+                                 ;*  
+                                 ;* Number of words	:14
+                                 ;* Number of cycles	:97
+                                 ;* Low registers used	:1 (drem8u)
+                                 ;* High registers used  :3 (dres8u/dd8u,dv8u,dcnt8u)
+                                 ;*
+                                 ;***************************************************************************
+                                 
+                                 ;***** Subroutine Register Variables
+                                 
+                                 .def	drem8u	=r15		;remainder
+                                 .def	dres8u	=r16		;result
+                                 .def	dd8u	=r16		;dividend
+                                 .def	dv8u	=r17		;divisor
+                                 .def	dcnt8u	=r18		;loop counter
+                                 
+                                 ;***** Code
+                                 
+000125 18ff                      div8u:	sub	drem8u,drem8u	;clear remainder and carry
+000126 e029                      	ldi	dcnt8u,9	;init loop counter
+000127 1f00                      d8u_1:	rol	dd8u		;shift left dividend
+000128 952a                      	dec	dcnt8u		;decrement counter
+000129 f409                      	brne	d8u_2		;if done
+00012a 9508                      	ret			;    return
+00012b 1cff                      d8u_2:	rol	drem8u		;shift dividend into remainder
+00012c 1af1                      	sub	drem8u,dv8u	;remainder = remainder - divisor
+00012d f418                      	brcc	d8u_3		;if result negative
+00012e 0ef1                      	add	drem8u,dv8u	;    restore remainder
+00012f 9488                      	clc			;    clear carry to be shifted into result
+000130 cff6                      	rjmp	d8u_1		;else
+000131 9408                      d8u_3:	sec			;    set carry to be shifted into result
+000132 cff4                      	rjmp	d8u_1
                                  
 
 
@@ -1352,40 +1584,40 @@ counted separately from r26..r31 here.
 .dseg memory usage only counts static data declared with .byte
 
 "ATmega328P" register use summary:
-x  :   0 y  :   0 z  :   0 r0 :   0 r1 :   0 r2 :   0 r3 :   0 r4 :   0 
+x  :   0 y  :   0 z  :   2 r0 :   0 r1 :   0 r2 :   0 r3 :   0 r4 :   0 
 r5 :   0 r6 :   0 r7 :   0 r8 :   0 r9 :   0 r10:   0 r11:   0 r12:   0 
-r13:   0 r14:   0 r15:   0 r16:  56 r17:   0 r18:   0 r19:   0 r20:   2 
-r21:   6 r22:   6 r23:   4 r24:   0 r25:   0 r26:   0 r27:   0 r28:   0 
-r29:   0 r30:   0 r31:   0 
-Registers used: 5 out of 35 (14.3%)
+r13:   0 r14:   0 r15:   7 r16:  98 r17:   3 r18:   2 r19:   0 r20:   2 
+r21:   6 r22:   6 r23:   7 r24:  14 r25:   4 r26:   0 r27:   0 r28:   0 
+r29:   0 r30:   6 r31:   6 
+Registers used: 13 out of 35 (37.1%)
 
 "ATmega328P" instruction use summary:
-.lds  :   0 .sts  :   0 adc   :   0 add   :   0 adiw  :   0 and   :   0 
+.lds  :   0 .sts  :   0 adc   :   0 add   :   3 adiw  :   0 and   :   0 
 andi  :   1 asr   :   0 bclr  :   0 bld   :   0 brbc  :   0 brbs  :   0 
-brcc  :   0 brcs  :   0 break :   0 breq  :   2 brge  :   0 brhc  :   0 
+brcc  :   1 brcs  :   0 break :   0 breq  :  10 brge  :   0 brhc  :   0 
 brhs  :   0 brid  :   0 brie  :   0 brlo  :   0 brlt  :   0 brmi  :   0 
 brne  :   8 brpl  :   0 brsh  :   0 brtc  :   0 brts  :   0 brvc  :   0 
 brvs  :   0 bset  :   0 bst   :   0 call  :   0 cbi   :  11 cbr   :   0 
-clc   :   0 clh   :   0 cli   :   0 cln   :   0 clr   :   2 cls   :   0 
+clc   :   1 clh   :   0 cli   :   0 cln   :   0 clr   :   0 cls   :   0 
 clt   :   0 clv   :   0 clz   :   0 com   :   0 cp    :   0 cpc   :   0 
-cpi   :   4 cpse  :   0 dec   :   6 eor   :   0 fmul  :   0 fmuls :   0 
-fmulsu:   0 icall :   0 ijmp  :   0 in    :   1 inc   :   2 jmp   :   0 
-ld    :   0 ldd   :   0 ldi   :  18 lds   :   0 lpm   :   0 lsl   :   2 
-lsr   :   2 mov   :   2 movw  :   0 mul   :   0 muls  :   0 mulsu :   0 
-neg   :   0 nop   :   0 or    :   1 ori   :   0 out   :   8 pop   :   9 
-push  :   9 rcall :  47 ret   :  14 reti  :   0 rjmp  :   4 rol   :   0 
-ror   :   0 sbc   :   0 sbci  :   0 sbi   :   8 sbic  :   0 sbis  :   0 
-sbiw  :   0 sbr   :   0 sbrc  :   0 sbrs  :   0 sec   :   0 seh   :   0 
+cpi   :   9 cpse  :   0 dec   :   9 eor   :   0 fmul  :   0 fmuls :   0 
+fmulsu:   0 icall :   0 ijmp  :   0 in    :   5 inc   :   2 jmp   :   0 
+ld    :   1 ldd   :   0 ldi   :  47 lds   :   0 lpm   :   1 lsl   :   2 
+lsr   :   3 mov   :   4 movw  :   0 mul   :   0 muls  :   0 mulsu :   0 
+neg   :   0 nop   :   0 or    :   1 ori   :   0 out   :  18 pop   :  15 
+push  :  15 rcall :  63 ret   :  21 reti  :   0 rjmp  :  11 rol   :   2 
+ror   :   0 sbc   :   0 sbci  :   0 sbi   :   9 sbic  :   0 sbis  :   2 
+sbiw  :   0 sbr   :   0 sbrc  :   0 sbrs  :   0 sec   :   1 seh   :   0 
 sei   :   0 sen   :   0 ser   :   0 ses   :   0 set   :   0 sev   :   0 
-sez   :   0 sleep :   0 spm   :   0 st    :   0 std   :   0 sts   :   0 
-sub   :   0 subi  :   0 swap  :   4 tst   :   0 wdr   :   0 
-Instructions used: 22 out of 113 (19.5%)
+sez   :   0 sleep :   0 spm   :   0 st    :   0 std   :   0 sts   :   5 
+sub   :   2 subi  :   0 swap  :   4 tst   :   2 wdr   :   0 
+Instructions used: 32 out of 113 (28.3%)
 
 "ATmega328P" memory use summary [bytes]:
 Segment   Begin    End      Code   Data   Used    Size   Use%
 ---------------------------------------------------------------
-[.cseg] 0x000000 0x00014a    330      0    330   32768   1.0%
-[.dseg] 0x000100 0x000100      0      0      0    2048   0.0%
+[.cseg] 0x000000 0x000266    588     26    614   32768   1.9%
+[.dseg] 0x000100 0x000105      0      5      5    2048   0.2%
 [.eseg] 0x000000 0x000000      0      0      0    1024   0.0%
 
-Assembly complete, 0 errors, 0 warnings
+Assembly complete, 0 errors, 1 warnings

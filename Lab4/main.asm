@@ -22,14 +22,19 @@
 .equ LCD_EN_PORT = PORTB
 .equ LCD_EN_DDR = DDRB
 .equ LCD_EN = 3 ; Enable is PB3 (Pin 11)
+.equ PWM_DDR = DDRD
+.equ PWM_pin = 5; PWM is PD5 (Pin 5)
+
 
 .equ RPG0=2			; RPG0 is PD2 (Pin 2)
 .equ RPG1=3			; RPG1 is PD3 (Pin 3)
 .equ BUTTON=4		; BUTTON is PD4 (Pin 4)
 
+.def fan = r23
+
 ; --- Data-direction register setup ---
 ; Inputs
-cbi DDRB, BUTTON	; Set BUTTON0 (PB3/Pin 11) as input
+cbi DDRD, BUTTON	; Set BUTTON0 (PB3/Pin 11) as input
 cbi DDRD, RPG0		; Set RPG0 (PD2/Pin 2) as input
 cbi DDRD, RPG1		; Set RPG1 (PD3/Pin 3) as input
 ; LCD Pins
@@ -39,39 +44,147 @@ sbi LCD_DATA_DDR, LCD_DATA_D6 ; Set LCD_DATA_D6 as output
 sbi LCD_DATA_DDR, LCD_DATA_D7 ; Set LCD_DATA_D7 as output
 sbi LCD_RS_DDR, LCD_RS ; Set LCD_RS as output
 sbi LCD_EN_DDR, LCD_EN ; Set LCD_EN as output 
+sbi PWM_DDR, PWM_pin ; Set PWM_pin as output
 
 cbi LCD_EN_PORT, LCD_EN ; Ensure default state of EN is low
+ldi fan, 1 ; Fan is on by default
+ldi r25, 99; Default backup value of PWM signal 49%
 
+; --- Setup ---
 rcall LCD_init
+rcall PWM_init
 
 /*
-ldi r16, 0x02
+ldi r16, 0xC0 ; Send to 2nd line
 rcall send_instruction
-*/
 
-/*
 ldi r16, 'E'
 rcall send_data
 */
 
-	rcall delay_5s
+rcall display_status
 
-	ldi r16, 'F'
-	rcall send_data
-
+; --- Loop ---
 start:
 
-
-
-	rcall delay_5s
-
-	ldi r16, 'E'
-	rcall send_data
+	; 1. Check for button press
+    sbis PIND, BUTTON
+	rcall wait_for_release_button
+	
+	; 2. Read RPG
+	rcall read_rpg
 
     rjmp start
 
 
+wait_for_release_button:
+; Note: Button is Active-Low. So I/O bit will be set when released.
+	cpi fan, 1
+	breq turn_fan_off
+	; Fan is Off. Turn on.
+turn_fan_on:
+	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1) ; Turn to normal output.
+	out TCCR0A, r16
+	out OCR0B, r25
+	ldi fan, 1
+	rcall display_status ; Now that Fan has been toggled, update display
+	rjmp button_held
+turn_fan_off:
+	ldi r16, 0xFF
+	in r25, OCR0B ; Backup current duty cycle value
+	out OCR0B, r16
+	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1)|(1<<COM0B0) ; Turn to inverted output. Allows constant low value to be output.
+	out TCCR0A, r16
+	ldi fan, 0
+	rcall display_status ; Now that Fan has been toggled, update display
+button_held:
+	sbis PIND, BUTTON
+	rjmp button_held
+	ret
 
+; --- LCD messages ---
+
+	msg1: .db "DC = ", 0x00
+	msg2: .db " (%) ", 0x00
+	msg3: .db "Fan: ", 0x00
+	msg4: .db "ON ", 0x00
+	msg5: .db "OFF", 0x00
+
+display_status:
+	push r16
+
+	; Send cursor to first line
+	ldi r16, 0x80
+	rcall send_instruction
+
+	; Display "DC = "
+	ldi r30, LOW(2*msg1)
+	ldi r31, HIGH(2*msg1)
+	rcall displayCString
+
+	; Display Duty Cycle
+	rcall update_DC_text
+	ldi r30, LOW(dtxt)
+	ldi r31, HIGH(dtxt)
+	rcall displayDString
+
+	; Display " (%) "
+	ldi r30, LOW(2*msg2)
+	ldi r31, HIGH(2*msg2)
+	rcall displayCString
+
+	; Send cursor to second line
+	ldi r16, 0xC0
+	rcall send_instruction
+
+	; Display "Fan: "
+	ldi r30, LOW(2*msg3)
+	ldi r31, HIGH(2*msg3)
+	rcall displayCString
+
+	cpi fan, 0 ; See if fan is turned off
+	breq display_OFF
+	;Fan is ON
+	; Display "ON "
+	ldi r30, LOW(2*msg4)
+	ldi r31, HIGH(2*msg4)
+	rcall displayCString
+	rjmp end_display_status
+
+display_OFF:
+	; Display "OFF"
+	ldi r30, LOW(2*msg5)
+	ldi r31, HIGH(2*msg5)
+	rcall displayCString
+end_display_status:
+	pop r16
+	ret
+
+
+
+displayCString:
+	push r16
+loop_displayCString:
+	lpm r16, Z+ ; Load contents of Z-pointer into r16, post-increment after
+	tst r16
+	breq end_displayCString
+	rcall send_data
+	rjmp loop_displayCString
+end_displayCString:
+	pop r16
+	ret
+
+displayDString:
+	push r16
+loop_displayDString:
+	ld r16, Z+
+	tst r16
+	breq end_displayDString
+	rcall send_data
+	rjmp loop_displayDString
+end_displayDString:
+	pop r16
+	ret
 
 read_rpg:
 	in R21, PIND	; Read all pins on Port D simultaneously
@@ -89,20 +202,18 @@ read_rpg:
 	rjmp end_read_rpg
 
 do_clockwise:
-	rcall increment_counter
-	cpi R23, 0			; Motion from RPG should change the dash display to a digit. If R23 is 0, the dash is being displayed. Motion should cancel this.
-	brne end_do_clockwise
-	inc R23				; Turn R23 to 1 so as to begin displaying and accepting first digit
-	clr R16				; Because increment_counter is called above, R16 must be cleared to begin display on 0.
+	cpi fan, 0			; Don't increment if fan is off
+	breq end_do_clockwise
+	rcall increment_PWM
+	rcall display_status
 end_do_clockwise: 
 	rjmp end_read_rpg
 
 do_counterclockwise:
-	rcall decrement_counter
-	cpi R23, 0			; Motion from RPG should get rid of displaying dash and begin displaying numbers.
-	brne end_do_counterclockwise
-	inc R23				; Incrementing R23 moves display from a dash to actual numbers
-	clr R16				; Although decrement won't decrement to zero, because display is beginning to display numbers, best to ensure that it starts out on zero.
+	cpi fan, 0			; Don't decrement if fan is off
+	breq end_do_counterclockwise
+	rcall decrement_PWM
+	rcall display_status
 end_do_counterclockwise:
 	rjmp end_read_rpg
 
@@ -111,10 +222,61 @@ end_read_rpg:
 	ret
 
 
-increment_counter:
+increment_PWM:
+	push r16
+	in r16, OCR0B
+	cpi r16, 199
+	breq end_increment_PWM ; Don't increment past 199 = 100% (Will display as 99%)
+	inc r16
+	inc r16
+	out OCR0B, r16 ; Store value back in OCR0B
+end_increment_PWM:
+	pop r16
 	ret
 
-decrement_counter:
+decrement_PWM:
+	push r16
+	in r16, OCR0B
+	cpi r16, 1
+	breq end_decrement_PWM
+	dec r16
+	dec r16
+	out OCR0B, r16
+end_decrement_PWM:
+	pop r16
+	ret
+
+
+update_DC_text:
+.dseg 
+	dtxt: .BYTE 5 ; Allocation
+
+.cseg
+	in r24, OCR0B	; Get OCR0B value. This corresponds with the current duty cycle.
+	cpi r24, 0xFF
+	brne use_regular
+	mov r24, r25
+use_regular:
+	lsr r24	; Divide by 2. OCR0B values range from 1 to 199. This now means they range from 0 to 99. PWM percentage can be directly taken from this number.
+	mov dd8u, r24
+	ldi dv8u, 10 ; Divide by 10 to get digits
+; Store null-terminated string
+	ldi r24, 0x00
+	sts dtxt+4, r24
+; Store 0
+	ldi r24, 0x30 ; 0 in ASCII
+	sts dtxt+3, r24
+; Store decimal point
+	ldi r24, 0x2E
+	sts dtxt+2, r24
+; Divide percentage by 10 and format remainder
+	rcall div8u ; Remainder is stored in drem8u (r15), Result is stored in dres8u (r16)
+	ldi r24, 0x30 ; ASCII offset
+	add drem8u, r24 ; Covert to ASCII
+	sts dtxt+1, drem8u
+; Store remaining digit.
+	add dres8u, r24 ; Covert to ASCII
+	sts dtxt, dres8u
 	ret
 
 send_instruction:
@@ -239,6 +401,26 @@ LCD_init:
 	ret
 
 
+PWM_init:
+	push r16
+
+	ldi r16, 0b00001001 ; Set prescaler to 1
+	out TCCR0B, r16
+
+	ldi r16, 199 ; Set top value for PWM. This gives a frequency of 80kHz.
+	out OCR0A, r16
+
+	ldi r16, 99 ; Set duty cycle to 50%
+	out OCR0B, r16
+
+	ldi r16, (1<<WGM00)|(1<<WGM01)|(1<<COM0B1) ; set the waveform generation mode to Fast PWM, 8-bit, with OC0B set on compare match
+	out TCCR0A, r16
+
+	pop r16
+	ret
+
+
+
 delay_5s:
 	push r16
 	ldi r16, 50
@@ -303,5 +485,46 @@ loop_40us:
 delay_375ns:
 	ret ; rcall - 2 cycles, ret - 4 cycles = 375ns @ 16MHz
 
+
+
+;***************************************************************************
+;*
+;* "div8u" - 8/8 Bit Unsigned Division
+;*
+;* This subroutine divides the two register variables "dd8u" (dividend) and 
+;* "dv8u" (divisor). The result is placed in "dres8u" and the remainder in
+;* "drem8u".
+;*  
+;* Number of words	:14
+;* Number of cycles	:97
+;* Low registers used	:1 (drem8u)
+;* High registers used  :3 (dres8u/dd8u,dv8u,dcnt8u)
+;*
+;***************************************************************************
+
+;***** Subroutine Register Variables
+
+.def	drem8u	=r15		;remainder
+.def	dres8u	=r16		;result
+.def	dd8u	=r16		;dividend
+.def	dv8u	=r17		;divisor
+.def	dcnt8u	=r18		;loop counter
+
+;***** Code
+
+div8u:	sub	drem8u,drem8u	;clear remainder and carry
+	ldi	dcnt8u,9	;init loop counter
+d8u_1:	rol	dd8u		;shift left dividend
+	dec	dcnt8u		;decrement counter
+	brne	d8u_2		;if done
+	ret			;    return
+d8u_2:	rol	drem8u		;shift dividend into remainder
+	sub	drem8u,dv8u	;remainder = remainder - divisor
+	brcc	d8u_3		;if result negative
+	add	drem8u,dv8u	;    restore remainder
+	clc			;    clear carry to be shifted into result
+	rjmp	d8u_1		;else
+d8u_3:	sec			;    set carry to be shifted into result
+	rjmp	d8u_1
 
 .exit

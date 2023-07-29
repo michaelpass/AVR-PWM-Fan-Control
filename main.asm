@@ -1,5 +1,8 @@
 ;
-; Lab4.asm
+; main.asm
+
+; This project represents a PWM-driven DC fan control application.
+; User can turn fan on/off and adjust fan-speed percentage.
 ;
 ; Created: 04/03/2023 9:49:10 PM
 ; Author : stlondon, mpass
